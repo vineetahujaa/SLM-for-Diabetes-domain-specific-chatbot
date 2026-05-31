@@ -1,0 +1,12 @@
+# Fine-tuning dependencies for scripts/fine_tune_gemma_270m_it.py
+# Install separately from the app runtime dependencies.
+torch>=2.4
+transformers>=4.51
+datasets>=3.0
+accelerate>=1.0
+peft>=0.13
+trl>=0.15
+pandas>=2.0
+huggingface-hub>=0.25
+# Optional for GPU quantized training workflows. The current LoRA script does not require it.
+bitsandbytes>=0.44; platform_system == "Linux"

@@ -1,0 +1,783 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Diabetes Care Chat</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            border: 'hsl(var(--border))',
+            input: 'hsl(var(--input))',
+            ring: 'hsl(var(--ring))',
+            background: 'hsl(var(--background))',
+            foreground: 'hsl(var(--foreground))',
+            primary: { DEFAULT: 'hsl(var(--primary))', foreground: 'hsl(var(--primary-foreground))' },
+            muted: { DEFAULT: 'hsl(var(--muted))', foreground: 'hsl(var(--muted-foreground))' },
+            card: { DEFAULT: 'hsl(var(--card))', foreground: 'hsl(var(--card-foreground))' },
+          }
+        }
+      }
+    }
+  </script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.7/dist/purify.min.js"></script>
+
+  <style>
+    :root {
+      --background: 0 0% 100%;
+      --foreground: 222.2 84% 4.9%;
+      --card: 0 0% 100%;
+      --card-foreground: 222.2 84% 4.9%;
+      --border: 214.3 31.8% 91.4%;
+      --input: 214.3 31.8% 91.4%;
+      --primary: 221.2 83.2% 53.3%;
+      --primary-foreground: 210 40% 98%;
+      --muted: 210 40% 96.1%;
+      --muted-foreground: 215.4 16.3% 46.9%;
+      --ring: 221.2 83.2% 53.3%;
+    }
+    .dark {
+      --background: 222.2 84% 4.9%;
+      --foreground: 210 40% 98%;
+      --card: 222.2 84% 4.9%;
+      --card-foreground: 210 40% 98%;
+      --border: 217.2 32.6% 17.5%;
+      --input: 217.2 32.6% 17.5%;
+      --primary: 217.2 91.2% 59.8%;
+      --primary-foreground: 222.2 47.4% 11.2%;
+      --muted: 217.2 32.6% 17.5%;
+      --muted-foreground: 215 20.2% 65.1%;
+      --ring: 224.3 76.3% 48%;
+    }
+
+    body { font-family: 'Inter', sans-serif; }
+
+    .scrollbar::-webkit-scrollbar { width: 4px; }
+    .scrollbar::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 9999px; }
+
+    /* Bubble animation */
+    .bubble { animation: pop .18s ease-out; }
+    @keyframes pop {
+      from { opacity:0; transform:translateY(6px) scale(.97); }
+      to   { opacity:1; transform:translateY(0) scale(1); }
+    }
+
+    /* Bounce dots */
+    .dot { animation: bounce 1.2s infinite; }
+    .dot:nth-child(2) { animation-delay: .2s; }
+    .dot:nth-child(3) { animation-delay: .4s; }
+    @keyframes bounce { 0%,60%,100%{transform:translateY(0)} 30%{transform:translateY(-4px)} }
+
+    /* Spinner */
+    .spin { animation: spin .8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Prose */
+    .message { font-size: .875rem; line-height: 1.6; }
+    .message p { margin: 0 0 .5em; }
+    .message p:last-child { margin-bottom: 0; }
+    .message ul, .message ol { padding-left: 1.25em; margin: .4em 0; }
+    .message li { margin: .15em 0; }
+    .message strong { font-weight: 600; }
+    .message a { text-decoration: underline; opacity: .8; }
+    .message code { font-size: .8em; background: hsl(var(--muted)); padding: .15em .35em; border-radius: .25em; }
+
+    /* Mode buttons */
+    .mode-tab { transition: all .15s ease; }
+    .mode-tab.active {
+      background: hsl(var(--primary));
+      color: hsl(var(--primary-foreground));
+      border-color: hsl(var(--primary));
+    }
+
+    /* File pill */
+    .file-pill {
+      animation: pillIn .15s ease-out;
+    }
+    @keyframes pillIn {
+      from { opacity:0; transform:scale(.85); }
+      to   { opacity:1; transform:scale(1); }
+    }
+
+    /* Send button active */
+    .send-btn:not(:disabled) { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+    .send-btn:not(:disabled):hover { opacity: .9; }
+    .send-btn:disabled { background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); cursor: not-allowed; }
+
+    /* Sidebar active item */
+    .nav-item.active {
+      background: hsl(var(--muted));
+      color: hsl(var(--foreground));
+    }
+
+    textarea { resize: none; overflow: hidden; }
+
+    /* Badge */
+    .badge-pass  { background:#dcfce7; color:#166534; border:1px solid #86efac; }
+    .badge-block { background:#fee2e2; color:#991b1b; border:1px solid #fca5a5; }
+    .dark .badge-pass  { background:#14532d; color:#86efac; }
+    .dark .badge-block { background:#7f1d1d; color:#fca5a5; }
+  </style>
+</head>
+
+<body class="h-full bg-[hsl(var(--background))] text-[hsl(var(--foreground))] antialiased">
+<div class="h-full flex">
+
+  <!-- ══ SIDEBAR ══ -->
+  <aside class="w-60 shrink-0 border-r border-[hsl(var(--border))] flex flex-col bg-[hsl(var(--card))]">
+
+    <!-- Logo -->
+    <div class="px-4 py-4 border-b border-[hsl(var(--border))] flex items-center justify-between">
+      <div class="flex items-center gap-2.5">
+        <div class="w-7 h-7 rounded-lg bg-[hsl(var(--primary))] grid place-items-center text-[hsl(var(--primary-foreground))] text-xs font-bold">D</div>
+        <span class="font-semibold text-sm">Diabetes Care</span>
+      </div>
+      <button id="themeBtn" class="w-7 h-7 rounded-md border border-[hsl(var(--border))] grid place-items-center hover:bg-[hsl(var(--muted))] transition-colors">
+        <svg id="sun" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="4"/>
+          <path d="M12 2v2m0 16v2m10-10h-2M4 12H2m15.536 6.364-1.414-1.414M6.879 6.879 5.464 5.464m12.728 0-1.415 1.415M6.879 17.121l-1.415 1.415"/>
+        </svg>
+        <svg id="moon" class="h-3.5 w-3.5 hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+        </svg>
+      </button>
+    </div>
+
+    <!-- Nav -->
+    <nav class="p-2 space-y-1 flex-1">
+      <button id="btnNewChat"
+        class="nav-item w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-sm text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))] hover:text-[hsl(var(--foreground))] transition-colors">
+        <svg class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 5v14M5 12h14"/>
+        </svg>
+        New chat
+      </button>
+
+      <div class="pt-2 pb-1 px-3">
+        <p class="text-[10px] font-semibold uppercase tracking-wider text-[hsl(var(--muted-foreground))]">Mode</p>
+      </div>
+
+      <button id="btnGuard"
+        class="mode-tab nav-item w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-sm text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))] hover:text-[hsl(var(--foreground))] transition-colors">
+        <svg class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+        </svg>
+        Model + Guardrail
+      </button>
+
+      <button id="btnRag"
+        class="mode-tab nav-item w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-sm text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))] hover:text-[hsl(var(--foreground))] transition-colors">
+        <svg class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <ellipse cx="12" cy="5" rx="9" ry="3"/>
+          <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/>
+          <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
+        </svg>
+        Model + RAG
+      </button>
+    </nav>
+
+    <!-- RAG doc list -->
+    <div id="docSection" class="hidden border-t border-[hsl(var(--border))] p-3">
+      <div class="flex items-center justify-between mb-2">
+        <p class="text-[10px] font-semibold uppercase tracking-wider text-[hsl(var(--muted-foreground))]">Documents</p>
+        <button id="uploadBtn"
+          class="flex items-center gap-1 text-[10px] px-2 py-1 rounded-md border border-dashed border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] hover:border-[hsl(var(--primary))] hover:text-[hsl(var(--primary))] transition-colors">
+          <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+          Add PDF
+        </button>
+      </div>
+      <div id="docList" class="space-y-1"></div>
+    </div>
+
+    <input id="pdfInput" type="file" accept=".pdf" class="hidden" multiple />
+
+    <!-- Bottom actions -->
+    <div class="border-t border-[hsl(var(--border))] p-2 space-y-1">
+      <button id="clearBtn"
+        class="w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-sm text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))] hover:text-[hsl(var(--foreground))] transition-colors">
+        <svg class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M3 6h18M19 6l-1 14H6L5 6M10 11v6M14 11v6M9 6V4h6v2"/>
+        </svg>
+        Clear chat
+      </button>
+      <button id="endSessionBtn"
+        class="w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-sm text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))] hover:text-[hsl(var(--foreground))] transition-colors">
+        <svg class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>
+        </svg>
+        End session
+      </button>
+    </div>
+  </aside>
+
+  <!-- ══ MAIN ══ -->
+  <div class="flex-1 flex flex-col min-w-0">
+
+    <!-- Header bar -->
+    <header class="h-12 shrink-0 border-b border-[hsl(var(--border))] bg-[hsl(var(--card))] flex items-center px-4 gap-3">
+      <span id="modeLabel" class="text-sm font-medium"></span>
+      <span id="modeDesc" class="text-xs text-[hsl(var(--muted-foreground))]"></span>
+      <div id="chipBar" class="hidden ml-auto items-center gap-2">
+        <span id="chipTTFT" class="text-xs px-2 py-0.5 rounded-full bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))]"></span>
+        <span id="chipSpeed" class="text-xs px-2 py-0.5 rounded-full bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))]"></span>
+      </div>
+    </header>
+
+    <!-- Chat feed -->
+    <main id="chat" class="flex-1 min-h-0 overflow-y-auto scrollbar">
+      <div id="feed" class="max-w-4xl mx-auto px-8 py-6 space-y-6"></div>
+    </main>
+
+    <!-- ── Advanced Chat Input (shadcn-style) ── -->
+    <div class="border-t border-[hsl(var(--border))] bg-[hsl(var(--card))] px-4 py-4">
+      <div class="max-w-4xl mx-auto px-4">
+
+        <!-- The card input -->
+        <div id="chatInputCard"
+          class="flex flex-col rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--background))] p-2 shadow-sm
+                 focus-within:border-[hsl(var(--ring))] focus-within:ring-2 focus-within:ring-[hsl(var(--ring))/20%] transition-all">
+
+          <!-- Attached files row -->
+          <div id="attachedFiles" class="hidden flex-wrap gap-2 mb-2 px-1"></div>
+
+          <!-- Textarea -->
+          <div class="relative flex items-end">
+            <textarea id="questionInput" rows="1"
+              placeholder="Ask about diabetes care..."
+              class="w-full min-h-[40px] max-h-40 bg-transparent px-2 py-1.5 text-sm
+                     text-[hsl(var(--foreground))] placeholder:text-[hsl(var(--muted-foreground))]
+                     focus:outline-none border-none shadow-none"
+              autocomplete="off" maxlength="2000"></textarea>
+          </div>
+
+          <!-- Bottom action bar -->
+          <div class="flex items-center justify-between mt-1 px-1">
+            <div class="flex items-center gap-1">
+              <!-- PDF attach (RAG only) -->
+              <button id="attachPdfBtn"
+                class="hidden h-8 w-8 rounded-md items-center justify-center text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--muted))] hover:text-[hsl(var(--foreground))] transition-colors"
+                title="Attach PDF">
+                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                  <polyline points="14 2 14 8 20 8"/>
+                  <line x1="12" y1="18" x2="12" y2="12"/>
+                  <line x1="9" y1="15" x2="15" y2="15"/>
+                </svg>
+              </button>
+              <input id="attachPdfInput" type="file" accept=".pdf" class="hidden" multiple />
+
+              <!-- Stop button -->
+              <button id="stopBtn"
+                class="hidden h-8 px-3 rounded-md items-center gap-1.5 text-xs font-medium
+                       border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400
+                       hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors">
+                <svg class="h-3 w-3" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>
+                Stop
+              </button>
+            </div>
+
+            <!-- Send button -->
+            <button id="sendBtn"
+              class="send-btn h-8 w-8 rounded-full grid place-items-center transition-all disabled:cursor-not-allowed"
+              disabled>
+              <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="9 10 4 15 9 20"/>
+                <path d="M20 4v7a4 4 0 0 1-4 4H4"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <p class="text-[11px] text-[hsl(var(--muted-foreground))] mt-2 text-center">Enter to send · Shift+Enter for newline</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast"
+  class="fixed bottom-5 left-1/2 -translate-x-1/2 hidden items-center gap-2
+         px-4 py-2.5 rounded-xl bg-[hsl(var(--foreground))] text-[hsl(var(--background))]
+         text-xs font-medium shadow-lg z-50">
+  <svg id="toastSpinner" class="spin h-3.5 w-3.5 hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+    <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4"/>
+  </svg>
+  <span id="toastMsg"></span>
+</div>
+
+<script>
+// ── Globals ────────────────────────────────────────────────────
+let currentMode = 'guardrail';
+let controller  = null;
+let attachedFiles = []; // { id, name, file } — for RAG inline attach
+
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+
+marked.setOptions({ gfm: true, breaks: true });
+function render(md) {
+  return DOMPurify.sanitize(marked.parse(md), { USE_PROFILES: { html: true } });
+}
+
+// ── Session ──────────────────────────────────────────────────
+function uuid() {
+  return crypto?.randomUUID?.() ||
+    'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+      const r = Math.random() * 16 | 0;
+      return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+    });
+}
+function getSessionId() {
+  let s = localStorage.getItem('medical_session_id');
+  if (!s) { s = uuid(); localStorage.setItem('medical_session_id', s); }
+  return s;
+}
+
+// ── Theme ────────────────────────────────────────────────────
+function setTheme(m) {
+  document.documentElement.classList.toggle('dark', m === 'dark');
+  $('#sun').classList.toggle('hidden', m === 'dark');
+  $('#moon').classList.toggle('hidden', m !== 'dark');
+  localStorage.setItem('theme', m);
+}
+$('#themeBtn').onclick = () => setTheme(document.documentElement.classList.contains('dark') ? 'light' : 'dark');
+setTheme(localStorage.getItem('theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
+
+// ── Mode ─────────────────────────────────────────────────────
+const MODE_META = {
+  guardrail: { label: 'Model + Guardrail', desc: 'Output validated by medical guardrail before display.' },
+  rag:       { label: 'Model + RAG',       desc: 'Answers use your uploaded PDFs with source citations.' },
+};
+
+function setMode(mode) {
+  currentMode = mode;
+  $$('.mode-tab').forEach(b => b.classList.remove('active'));
+  $('#btn' + (mode === 'guardrail' ? 'Guard' : 'Rag')).classList.add('active');
+  $('#modeLabel').textContent = MODE_META[mode].label;
+  $('#modeDesc').textContent  = MODE_META[mode].desc;
+
+  const isRag = mode === 'rag';
+  $('#docSection').classList.toggle('hidden', !isRag);
+  $('#attachPdfBtn').classList.toggle('hidden', !isRag);
+  $('#attachPdfBtn').classList.toggle('flex', isRag);
+  if (isRag) loadDocList();
+  updateSendBtn();
+}
+
+$('#btnGuard').onclick = () => setMode('guardrail');
+$('#btnRag').onclick   = () => setMode('rag');
+setMode('guardrail');
+
+// ── Send button state ────────────────────────────────────────
+function updateSendBtn() {
+  const hasText  = !!$('#questionInput').value.trim();
+  const hasFiles = attachedFiles.length > 0;
+  $('#sendBtn').disabled = !hasText && !hasFiles;
+}
+
+// ── Textarea auto-resize ─────────────────────────────────────
+function autoResize() {
+  const ta = $('#questionInput');
+  ta.style.height = 'auto';
+  ta.style.height = Math.min(ta.scrollHeight, 160) + 'px';
+  updateSendBtn();
+}
+$('#questionInput').addEventListener('input', autoResize);
+
+// ── Attached files (inline, RAG mode) ───────────────────────
+function renderAttachedFiles() {
+  const row = $('#attachedFiles');
+  if (!attachedFiles.length) { row.classList.add('hidden'); row.innerHTML = ''; return; }
+  row.classList.remove('hidden');
+  row.classList.add('flex');
+  row.innerHTML = '';
+  attachedFiles.forEach(f => {
+    const pill = document.createElement('div');
+    pill.className = 'file-pill flex items-center gap-1.5 px-2 py-1 rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--muted))] text-xs text-[hsl(var(--foreground))]';
+    pill.innerHTML = `
+      <svg class="h-3.5 w-3.5 text-[hsl(var(--muted-foreground))] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+        <polyline points="14 2 14 8 20 8"/>
+      </svg>
+      <span class="max-w-[120px] truncate">${f.name}</span>
+      <button class="h-4 w-4 rounded grid place-items-center hover:bg-[hsl(var(--border))] transition-colors" data-id="${f.id}">
+        <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </button>`;
+    pill.querySelector('button').onclick = () => {
+      attachedFiles = attachedFiles.filter(x => x.id !== f.id);
+      renderAttachedFiles();
+      updateSendBtn();
+    };
+    row.appendChild(pill);
+  });
+}
+
+$('#attachPdfBtn').onclick = () => $('#attachPdfInput').click();
+$('#attachPdfInput').onchange = async (e) => {
+  const files = [...e.target.files];
+  e.target.value = '';
+  for (const file of files) {
+    showToast(`Uploading ${file.name}…`, true);
+    const fd = new FormData();
+    fd.append('file', file);
+    try {
+      const r = await fetch('/api/upload_document', { method: 'POST', body: fd });
+      if (!r.ok) { const d = await r.json(); throw new Error(d.detail || 'Upload failed'); }
+      attachedFiles.push({ id: Date.now() + Math.random(), name: file.name, file });
+      renderAttachedFiles();
+      updateSendBtn();
+      showToast(`✓ ${file.name} added`, false, 2000);
+      await loadDocList();
+    } catch (err) {
+      showToast(`✗ ${err.message}`, false, 3000);
+    }
+  }
+};
+
+// ── Sidebar doc list ─────────────────────────────────────────
+async function loadDocList() {
+  try {
+    const r = await fetch('/api/documents');
+    const { documents } = await r.json();
+    const list = $('#docList');
+    list.innerHTML = '';
+    if (!documents.length) {
+      list.innerHTML = '<p class="text-[11px] text-[hsl(var(--muted-foreground))] px-1">No PDFs yet</p>';
+      return;
+    }
+    documents.forEach(doc => {
+      const item = document.createElement('div');
+      item.className = 'flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-[hsl(var(--muted))] transition-colors group';
+      const kb = (doc.size / 1024).toFixed(0);
+      item.innerHTML = `
+        <svg class="h-3.5 w-3.5 shrink-0 text-[hsl(var(--muted-foreground))]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+        </svg>
+        <span class="text-[11px] text-[hsl(var(--foreground))] truncate flex-1">${doc.name}</span>
+        <span class="text-[10px] text-[hsl(var(--muted-foreground))]">${kb}KB</span>`;
+      list.appendChild(item);
+    });
+  } catch {}
+}
+
+// Sidebar upload button
+$('#uploadBtn').onclick = () => {
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.accept = '.pdf'; inp.multiple = true;
+  inp.onchange = async (e) => {
+    for (const file of [...e.target.files]) {
+      showToast(`Uploading ${file.name}…`, true);
+      const fd = new FormData(); fd.append('file', file);
+      try {
+        const r = await fetch('/api/upload_document', { method: 'POST', body: fd });
+        if (!r.ok) { const d = await r.json(); throw new Error(d.detail); }
+        showToast(`✓ ${file.name} uploaded`, false, 2000);
+        await loadDocList();
+      } catch (err) { showToast(`✗ ${err.message}`, false, 3000); }
+    }
+  };
+  inp.click();
+};
+
+// ── Toast ────────────────────────────────────────────────────
+let toastTimer;
+function showToast(msg, loading = false, dismiss = 0) {
+  clearTimeout(toastTimer);
+  $('#toastMsg').textContent = msg;
+  $('#toastSpinner').classList.toggle('hidden', !loading);
+  $('#toast').classList.remove('hidden');
+  $('#toast').classList.add('flex');
+  if (dismiss) toastTimer = setTimeout(() => {
+    $('#toast').classList.add('hidden');
+    $('#toast').classList.remove('flex');
+  }, dismiss);
+}
+
+// ── Message bubbles ──────────────────────────────────────────
+function addMessage(role, html) {
+  const feed = $('#feed');
+  const row  = document.createElement('div');
+  row.className = `flex gap-3 bubble ${role === 'user' ? 'justify-end' : 'justify-start'}`;
+
+  const avatar = document.createElement('div');
+  const base = 'w-7 h-7 shrink-0 rounded-full grid place-items-center text-xs font-semibold';
+  if (role === 'user') {
+    avatar.className = `${base} bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] order-2 mt-1`;
+    avatar.textContent = 'You';
+  } else {
+    avatar.className = `${base} bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))] mt-1`;
+    avatar.textContent = 'AI';
+  }
+
+  const bubble = document.createElement('div');
+  bubble.className = 'max-w-[65%] px-4 py-3 rounded-2xl text-sm shadow-sm ' + (
+    role === 'user'
+      ? 'bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] rounded-tr-sm'
+      : 'bg-[hsl(var(--card))] border border-[hsl(var(--border))] text-[hsl(var(--foreground))] rounded-tl-sm'
+  );
+  bubble.innerHTML = html;
+
+  if (role === 'user') { row.appendChild(bubble); row.appendChild(avatar); }
+  else                 { row.appendChild(avatar); row.appendChild(bubble); }
+
+  feed.appendChild(row);
+  $('#chat').scrollTop = $('#chat').scrollHeight;
+  return bubble;
+}
+
+function addTextMessage(role, text) {
+  const b = addMessage(role, '');
+  const p = document.createElement('p');
+  p.className = 'text-sm whitespace-pre-wrap break-words';
+  p.textContent = text;
+  b.replaceChildren(p);
+  return b;
+}
+
+function spinnerHTML(label) {
+  return `<div class="flex items-center gap-2 text-[hsl(var(--muted-foreground))] text-sm">
+    <svg class="spin h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4" stroke-opacity=".3"/>
+      <path d="M12 2v4"/>
+    </svg><span>${label}</span></div>`;
+}
+
+function guardBadge(passed) {
+  const cls = passed ? 'badge-pass' : 'badge-block';
+  return `<span class="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium mt-2 ${cls}">
+    ${passed ? '✅ Guardrail passed' : '🛡️ Guardrail blocked'}</span>`;
+}
+
+// ── Feedback ─────────────────────────────────────────────────
+function sendFeedback(type, question, answer, container, suggestion = '') {
+  fetch('/feedback', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ session_id: getSessionId(), question, answer, feedback: type, suggestion }),
+  }).then(() => {
+    if (container) container.innerHTML = `<span class="text-xs text-[hsl(var(--muted-foreground))]">Thanks! ${type === 'up' ? '👍' : '👎'}</span>`;
+  }).catch(console.error);
+}
+
+function appendFeedbackControls(bubble, question, answer) {
+  const bar = document.createElement('div');
+  bar.className = 'mt-3 pt-2.5 border-t border-[hsl(var(--border))] flex items-center gap-2';
+  bar.innerHTML = `
+    <span class="text-xs text-[hsl(var(--muted-foreground))]">Helpful?</span>
+    <button class="thumb-up text-xs px-2 py-0.5 rounded-full border border-[hsl(var(--border))] hover:bg-[hsl(var(--muted))] transition-colors">👍</button>
+    <button class="thumb-down text-xs px-2 py-0.5 rounded-full border border-[hsl(var(--border))] hover:bg-[hsl(var(--muted))] transition-colors">👎</button>`;
+  bar.querySelector('.thumb-up').onclick  = () => sendFeedback('up', question, answer, bar);
+  bar.querySelector('.thumb-down').onclick = () => {
+    if (bar.dataset.done) return;
+    bar.dataset.done = '1';
+    sendFeedback('down', question, answer, null, '');
+    bar.innerHTML = `
+      <div class="flex flex-col gap-2 w-full">
+        <span class="text-xs text-[hsl(var(--muted-foreground))]">How could this be improved?</span>
+        <textarea rows="2" placeholder="Optional suggestion…"
+          class="w-full px-2.5 py-1.5 rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--background))]
+                 text-xs text-[hsl(var(--foreground))] placeholder:text-[hsl(var(--muted-foreground))]
+                 focus:outline-none focus:border-[hsl(var(--ring))] resize-none"></textarea>
+        <div class="flex gap-2">
+          <button class="skip text-xs px-3 py-1 rounded-md border border-[hsl(var(--border))] hover:bg-[hsl(var(--muted))] transition-colors">Skip</button>
+          <button class="submit text-xs px-3 py-1 rounded-md bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] hover:opacity-90 transition-opacity">Submit</button>
+        </div>
+      </div>`;
+    const ta = bar.querySelector('textarea');
+    bar.querySelector('.skip').onclick   = () => { bar.innerHTML = '<span class="text-xs text-[hsl(var(--muted-foreground))]">Thanks! 👎</span>'; };
+    bar.querySelector('.submit').onclick = () => {
+      const s = ta.value.trim();
+      if (s) sendFeedback('down', question, answer, bar, s);
+      else   bar.innerHTML = '<span class="text-xs text-[hsl(var(--muted-foreground))]">Thanks! 👎</span>';
+    };
+  };
+  bubble.appendChild(bar);
+}
+
+// ── Main ask ─────────────────────────────────────────────────
+async function askQuestion(q) {
+  const question = (q ?? $('#questionInput').value).trim();
+  if (!question && !attachedFiles.length) return;
+
+  addTextMessage('user', question || '[PDF attached]');
+  $('#questionInput').value = '';
+  attachedFiles = [];
+  renderAttachedFiles();
+  autoResize();
+  updateSendBtn();
+
+  const box = addMessage('assistant', `
+    <div class="flex items-center gap-1.5 py-0.5">
+      <span class="dot w-1.5 h-1.5 rounded-full bg-[hsl(var(--muted-foreground))] opacity-60"></span>
+      <span class="dot w-1.5 h-1.5 rounded-full bg-[hsl(var(--muted-foreground))] opacity-60"></span>
+      <span class="dot w-1.5 h-1.5 rounded-full bg-[hsl(var(--muted-foreground))] opacity-60"></span>
+    </div>`);
+
+  $('#chipBar').classList.remove('hidden');
+  $('#chipBar').classList.add('flex');
+  $('#chipTTFT').textContent = '';
+  $('#chipSpeed').textContent = '';
+
+  const wallStart = performance.now();
+  controller = new AbortController();
+  $('#stopBtn').classList.remove('hidden');
+  $('#stopBtn').classList.add('flex');
+  $('#questionInput').disabled = true;
+  $('#sendBtn').disabled = true;
+  $('#stopBtn').onclick = () => controller.abort();
+
+  let acc = '', buffer = '', livePre = null, paintTimer = null;
+
+  function mountPre() {
+    box.innerHTML = '';
+    const pre = document.createElement('pre');
+    pre.className = 'whitespace-pre-wrap break-words text-sm leading-relaxed';
+    box.appendChild(pre);
+    return pre;
+  }
+  function schedulePaint(final = false) {
+    if (final) {
+      box.innerHTML = `<div class="message">${render(acc.trimEnd())}</div>`;
+      $('#chat').scrollTop = $('#chat').scrollHeight;
+      return;
+    }
+    if (!livePre) livePre = mountPre();
+    if (paintTimer) return;
+    paintTimer = setTimeout(() => {
+      paintTimer = null;
+      if (livePre) livePre.textContent = acc;
+      $('#chat').scrollTop = $('#chat').scrollHeight;
+    }, 50);
+  }
+
+  try {
+    const resp = await fetch('/chat_stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Session-Id': getSessionId() },
+      body: JSON.stringify({ question: question || ' ', mode: currentMode }),
+      signal: controller.signal,
+    });
+    if (!resp.ok) { box.innerHTML = `<p class="text-sm text-red-500">Server error: ${resp.status}</p>`; return; }
+
+    const reader  = resp.body.getReader();
+    const decoder = new TextDecoder();
+    box.innerHTML = '';
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let i;
+      while ((i = buffer.indexOf('\n\n')) >= 0) {
+        const chunk = buffer.slice(0, i); buffer = buffer.slice(i + 2);
+        if (!chunk.startsWith('data: ')) continue;
+        let evt; try { evt = JSON.parse(chunk.slice(6)); } catch { continue; }
+        if (!evt?.type) continue;
+
+        if (evt.type === 'ttft')  { $('#chipTTFT').textContent = `TTFT ${evt.v}s`; continue; }
+        if (evt.type === 'tps')   { $('#chipSpeed').textContent = `${evt.v} tok/s`; continue; }
+        if (evt.type === 'status') continue;
+
+        if (evt.type === 'valid') {
+          box.insertAdjacentHTML('beforeend', guardBadge(true)); continue;
+        }
+        if (evt.type === 'replace') {
+          acc = evt.v ?? '';
+          box.innerHTML = `<div class="message">${render(acc)}</div>`;
+          box.insertAdjacentHTML('beforeend', guardBadge(false));
+          $('#chat').scrollTop = $('#chat').scrollHeight;
+          continue;
+        }
+        if (evt.type === 'searching') { box.innerHTML = spinnerHTML('Searching documents…'); acc = ''; livePre = null; continue; }
+        if (evt.type === 'generating') { box.innerHTML = spinnerHTML('Generating answer…'); acc = ''; livePre = null; continue; }
+        if (evt.type === 'sources' || evt.type === 'token') { acc += evt.v ?? ''; schedulePaint(false); continue; }
+      }
+    }
+
+    if (acc.trim()) schedulePaint(true);
+    if (acc.trim()) appendFeedbackControls(box, question, acc);
+
+  } catch (e) {
+    if (e.name === 'AbortError') {
+      box.insertAdjacentHTML('beforeend', '<p class="text-xs text-[hsl(var(--muted-foreground))] mt-2">⏹ Stopped.</p>');
+    } else {
+      box.innerHTML = `<p class="text-sm text-red-500">Error: ${e.message}</p>`;
+    }
+  } finally {
+    $('#stopBtn').classList.add('hidden');
+    $('#stopBtn').classList.remove('flex');
+    $('#questionInput').disabled = false;
+    $('#sendBtn').disabled = false;
+    $('#questionInput').focus();
+    const total = ((performance.now() - wallStart) / 1000).toFixed(2);
+    if ($('#chipSpeed').textContent) $('#chipSpeed').textContent += ` · ${total}s`;
+  }
+}
+
+// ── Welcome ───────────────────────────────────────────────────
+function renderWelcome() {
+  $('#feed').innerHTML = `
+    <div class="flex flex-col items-center text-center py-12 bubble">
+      <div class="w-16 h-16 rounded-2xl bg-[hsl(var(--primary))/10%] grid place-items-center mb-4">
+        <svg class="h-8 w-8 text-[hsl(var(--primary))]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+        </svg>
+      </div>
+      <h2 class="font-semibold text-lg mb-1">Diabetes Care Chat</h2>
+      <p class="text-sm text-[hsl(var(--muted-foreground))] mb-8 max-w-lg">Ask anything about diabetes management, medications, diet, and more.</p>
+      <div class="grid grid-cols-2 gap-3 w-full max-w-2xl">
+        <button class="ex text-left px-4 py-3 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] hover:bg-[hsl(var(--muted))] transition-colors text-sm" data-q="What is Type 2 diabetes?">
+          <span class="block font-medium mb-0.5">Type 2 diabetes</span>
+          <span class="text-[hsl(var(--muted-foreground))] text-xs">What is it and how does it develop?</span>
+        </button>
+        <button class="ex text-left px-4 py-3 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] hover:bg-[hsl(var(--muted))] transition-colors text-sm" data-q="What are the symptoms of diabetes?">
+          <span class="block font-medium mb-0.5">Symptoms</span>
+          <span class="text-[hsl(var(--muted-foreground))] text-xs">Common signs to watch for</span>
+        </button>
+        <button class="ex text-left px-4 py-3 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] hover:bg-[hsl(var(--muted))] transition-colors text-sm" data-q="How can I manage my blood sugar levels?">
+          <span class="block font-medium mb-0.5">Blood sugar</span>
+          <span class="text-[hsl(var(--muted-foreground))] text-xs">Management strategies</span>
+        </button>
+        <button class="ex text-left px-4 py-3 rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] hover:bg-[hsl(var(--muted))] transition-colors text-sm" data-q="What foods should a diabetic avoid?">
+          <span class="block font-medium mb-0.5">Dietary guidelines</span>
+          <span class="text-[hsl(var(--muted-foreground))] text-xs">Foods to eat and avoid</span>
+        </button>
+      </div>
+    </div>`;
+  $$('.ex', $('#feed')).forEach(b => b.onclick = () => askQuestion(b.dataset.q));
+  $('#chipBar').classList.add('hidden');
+  $('#chipBar').classList.remove('flex');
+}
+
+// ── Events ────────────────────────────────────────────────────
+$('#sendBtn').onclick = () => askQuestion();
+$('#questionInput').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); askQuestion(); }
+});
+
+$('#btnNewChat').onclick = () => { renderWelcome(); $('#questionInput').value = ''; autoResize(); $('#questionInput').focus(); };
+
+$('#clearBtn').onclick = async () => {
+  try { await fetch('/api/clear_memory', { method: 'POST', headers: { 'X-Session-Id': getSessionId() } }); } catch {}
+  renderWelcome(); $('#questionInput').value = ''; autoResize(); $('#questionInput').focus();
+};
+
+$('#endSessionBtn').onclick = async () => {
+  if (!confirm('End this session?')) return;
+  const sid = getSessionId();
+  try { await fetch('/end_session', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ session_id: sid }) }); } catch {}
+  localStorage.removeItem('medical_session_id');
+  renderWelcome();
+};
+
+
+window.addEventListener('load', () => { renderWelcome(); $('#questionInput').focus(); });
+</script>
+</body>
+</html>
